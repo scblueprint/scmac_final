@@ -52,7 +52,7 @@ const editEvent = async (eventId, eventStart, eventEnd, eventDesc, materials, sh
     }
 
     const eventData = eventDoc.data();
-    const existingShiftIds = eventData.shifts || [];
+    const existingShiftIds = new Set(eventData.shifts || []);
     const existingMaterials = eventData.materials || [];
 
     const materialsObj = existingMaterials.map(mat => ({ item: mat.item, user: mat.user }));
@@ -63,19 +63,21 @@ const editEvent = async (eventId, eventStart, eventEnd, eventDesc, materials, sh
     });
 
     const shiftIDS = [...existingShiftIds];
-    for (let i = 0; i < shifts.length; i++) {
-      const shift = shifts[i];
-      if (shift.id) {
+
+    for (const shift of shifts) {
+      if (shift.id && existingShiftIds.has(shift.id)) {
+        // Update the already existing shift
         const shiftRef = doc(db, "shifts", shift.id);
         await updateDoc(shiftRef, {
-          endTime: parseInt(shift.endTime),
-          startTime: parseInt(shift.startTime)
+          endTime: parseInt(shift.end),
+          startTime: parseInt(shift.start),
         });
-      } else {
+      } else if (!shift.id) {
+        // Create a new shift only if it's not already in the set
         const docRef = await addDoc(collection(db, "shifts"), {
-          endTime: parseInt(shift.endTime),
-          startTime: parseInt(shift.startTime),
-          user: []
+          endTime: parseInt(shift.end),
+          startTime: parseInt(shift.start),
+          user: [],
         });
         shiftIDS.push(docRef.id);
       }
@@ -90,13 +92,13 @@ const editEvent = async (eventId, eventStart, eventEnd, eventDesc, materials, sh
       shifts: shiftIDS,
       title: title,
       category: category,
-      notfis: notfis == undefined ? [] : notfis
+      notfis: notfis || [],
     };
 
-    await getUserNotifTokens(existingShiftIds, title, eventId);
+    // Notify users about event update
+    await getUserNotifTokens([...existingShiftIds], title, eventId);
 
     await updateDoc(eventRef, data);
-
   } catch (error) {
     console.error("Event Update Error:", error);
     throw error;
